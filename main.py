@@ -3,8 +3,46 @@ from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 import numpy as np
 from scipy.stats import multivariate_normal as mvn
-from sklearn.mixture import GaussianMixture
 
+
+class GMM:
+    def __init__(self, n_components, n_iters=50):
+        self.k = n_components
+        self.n_iters = n_iters
+
+    def fit(self, X):
+        n_samples, n_features = X.shape
+
+        # Initialize parameters
+        np.random.seed(42)
+        random_idx = np.random.choice(n_samples, self.k, replace=False)
+        self.means = X[random_idx]
+        self.covs = np.array([np.cov(X.T) for _ in range(self.k)])
+        self.weights = np.ones(self.k) / self.k
+
+        # EM algorithm
+        for _ in range(self.n_iters):
+            # E-step
+            resp = np.zeros((n_samples, self.k))
+            for i in range(self.k):
+                resp[:, i] = self.weights[i] * mvn.pdf(X, self.means[i], self.covs[i])
+            resp = resp / resp.sum(axis=1, keepdims=True)
+
+            # M-step
+            N_k = resp.sum(axis=0)
+            for i in range(self.k):
+                self.means[i] = (resp[:, i].reshape(-1, 1) * X).sum(axis=0) / N_k[i]
+                diff = X - self.means[i]
+                self.covs[i] = (resp[:, i].reshape(-1, 1) * diff).T @ diff / N_k[i]
+                self.covs[i] += np.eye(n_features) * 1e-6
+                self.weights[i] = N_k[i] / n_samples
+
+    def score_samples(self, X):
+        probs = np.zeros((X.shape[0], self.k))
+        for i in range(self.k):
+            probs[:, i] = self.weights[i] * mvn.pdf(X, self.means[i], self.covs[i])
+        return np.log(probs.sum(axis=1))
+    
 def trainGaussianModel(x_train, y_train):
     class_labels = np.unique(y_train)
     pca = PCA(n_components=20)
@@ -56,24 +94,18 @@ y_pred = testGaussianModel(x_test, pca, class_labels, means, covs)
 accuracy = np.mean(y_pred == y_test)
 print("Empirical Accuracy For Gaussian Model:", accuracy)
 
-pca = PCA(n_components=20)
-x_train_pca = pca.fit_transform(x_train)
-x_test_pca = pca.transform(x_test)
-
-gmm_models = {}
-n_components = 3  # number of mixtures per digit (you can experiment: 2–5)
-
+n_components = 3  # you can change to 2, 4, etc.
+gmms = {}
 for digit in range(10):
-    Xc = x_train_pca[y_train == digit]  # get all samples of this digit
-    gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=42)
+    Xc = x_train[y_train == digit]
+    gmm = GMM(n_components=n_components, n_iters=30)
     gmm.fit(Xc)
-    gmm_models[digit] = gmm
-    
-log_likelihoods = np.zeros((x_test_pca.shape[0], 10))
+    gmms[digit] = gmm
 
+log_likelihoods = np.zeros((x_test.shape[0], 10))
 for digit in range(10):
-    log_likelihoods[:, digit] = gmm_models[digit].score_samples(x_test_pca)
+    log_likelihoods[:, digit] = gmms[digit].score_samples(x_test)
 
 y_pred = np.argmax(log_likelihoods, axis=1)
-GMMaccuracy = np.mean(y_pred == y_test)
-print("Empirical Accuracy for Gaussian Mixture Model:", GMMaccuracy)
+accuracy = np.mean(y_pred == y_test)
+print("Empirical Accuracy for your Gaussian Mixture Model:", accuracy)
