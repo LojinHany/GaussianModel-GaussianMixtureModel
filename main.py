@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 import numpy as np
 from scipy.stats import multivariate_normal as mvn
-
+from sklearn.mixture import GaussianMixture
 
 def trainGaussianModel(x_train, y_train):
     class_labels = np.unique(y_train)
@@ -55,3 +55,25 @@ y_pred = testGaussianModel(x_test, pca, class_labels, means, covs)
 
 accuracy = np.mean(y_pred == y_test)
 print("Empirical Accuracy For Gaussian Model:", accuracy)
+
+pca = PCA(n_components=20)
+x_train_pca = pca.fit_transform(x_train)
+x_test_pca = pca.transform(x_test)
+
+gmm_models = {}
+n_components = 3  # number of mixtures per digit (you can experiment: 2–5)
+
+for digit in range(10):
+    Xc = x_train_pca[y_train == digit]  # get all samples of this digit
+    gmm = GaussianMixture(n_components=n_components, covariance_type='full', random_state=42)
+    gmm.fit(Xc)
+    gmm_models[digit] = gmm
+    
+log_likelihoods = np.zeros((x_test_pca.shape[0], 10))
+
+for digit in range(10):
+    log_likelihoods[:, digit] = gmm_models[digit].score_samples(x_test_pca)
+
+y_pred = np.argmax(log_likelihoods, axis=1)
+GMMaccuracy = np.mean(y_pred == y_test)
+print("Empirical Accuracy for Gaussian Mixture Model:", GMMaccuracy)
